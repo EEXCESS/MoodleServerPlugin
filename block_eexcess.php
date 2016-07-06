@@ -56,16 +56,24 @@ class block_eexcess extends block_base {
      * @return object $this->content
      */
     public function get_content() {
-        global $PAGE, $DB, $USER;
+        global $PAGE, $DB, $USER, $SESSION;
         if ($this->content !== null) {
             return $this->content;
         }
-
+        if(!isset($SESSION->search_bar_status)){
+            $SESSION->search_bar_status = 0;
+        }
         // Titles.
         $intereststitle = get_string('interests', 'block_eexcess');
         $citationtitle = get_string('citation', 'block_eexcess');
         $imglicensetitle = get_string('imagelicense', 'block_eexcess');
-        $showhidebartitle = get_string('showhidebar', 'block_eexcess');
+        if($SESSION->search_bar_status === 1){
+            $showhidebartitle = get_string('hidebar', 'block_eexcess');
+        }else{
+            $showhidebartitle = get_string('showbar', 'block_eexcess');
+        }
+        $showbar = get_string('showbar', 'block_eexcess');
+        $hidebar = get_string('hidebar', 'block_eexcess');
 
         // New moodle urls.
         $urlinterests = new moodle_url('/blocks/eexcess/eexcess_interests.php');
@@ -87,8 +95,11 @@ class block_eexcess extends block_base {
         foreach ($cats as $cat) {
             $interestsarr[] = array("text" => $cat->interests);
         }
+
         $baseurl = get_config('block_eexcess', 'base_url');
-        $params = array('userid' => $userid, 'rec_base_url' => $baseurl, "interests" => $interestsarr);
+        
+        $params = array('userid' => $userid, 'rec_base_url' => $baseurl, "interests" => $interestsarr,
+        "status_bar" => $SESSION->search_bar_status, "showbar" => $showbar, "hidebar" =>$hidebar);
         $PAGE->requires->js_call_amd('block_eexcess/EEXCESSResults', 'init', $params);
 
         // HTML content.
@@ -97,5 +108,4 @@ class block_eexcess extends block_base {
 
         return $this->content;
     }
-
 }

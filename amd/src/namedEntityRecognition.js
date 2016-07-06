@@ -27,10 +27,11 @@ define(['jquery'], function($) {
             }
             xhr = $.ajax({
                 url: endpoint,
-                data: JSON.stringify({paragraphs: paragraphs}),
+                data: JSON.stringify(paragraphs),
                 type: 'POST',
                 contentType: 'application/json',
-                dataType: 'json'
+                dataType: 'json',
+                timeout:10000
             });
             xhr.done(function(response) {
                 if (typeof callback !== 'undefined') {

@@ -19,11 +19,210 @@
  * if an error message is available, it will be present in the 'error' attribute.
  */
 
-define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
+/**
+ * Callback for the paragraphToQueries function
+ * @callback paragraphToQueries~callback
+ * @param {queries:Object,error:String} The result of the extraction. If the extraction was successful,
+ * the generated queries will be present in the attribute 'queries'. Otherwise,
+ * if an error message is available, it will be present in the 'error' attribute.
+ */
+
+define(['jquery', 'block_eexcess/namedEntityRecognition', 'block_eexcess/guessLanguage'], function($, ner, guessLang) {
+
+    /**
+     *
+     * Block comment
+     *
+     */
+    var augmentationComponents = {
+        img1: null,
+        img2: null,
+        img3: null,
+        img4: null,
+        img5: null,
+        img6: null,
+        selection: null,
+        selectedElement: null,
+        framecords: null
+    };
+    /**
+     *
+     * Object for Augmentation Parameters
+     *
+     */
+    var augmentationData = {
+        addKeyword: null,
+        queryFromSelection: null,
+        pd: null,
+        mainTopic: null
+    };
+
+    var pgf = function(e) {
+        // console.log(e);
+        if (window.getSelection().toString() !== '') {
+            augmentationComponents.selection = window.getSelection();
+            augmentationComponents.selectedElements = getSelectedElements(augmentationComponents.selection);
+            augmentationComponents.firstSelectedElement = augmentationComponents.selection.anchorNode.parentElement;
+            augmentationComponents.lastSelectedElement = augmentationComponents.selection.extentNode.parentElement;
+            augmentationComponents.selectedElement = augmentationComponents.selection.extentNode.parentElement;
+            augmentationComponents.selection = augmentationComponents.selection.toString();
+//            augmentationComponents.selection = augmentationComponents.selectedElements.selectionText;
+
+            var leftPos = e.pageX;
+            var topPos = e.pageY + 10;
+            if (($(window).width() - 145) <= e.pageX) {
+                leftPos = e.pageX - 145;
+            }
+            if (($(window).height() - 45) <= e.pageY) {
+                topPos = e.pageY - 45;
+            }
+
+            augmentationComponents.img1.css('top', topPos).css('left', leftPos).fadeIn('fast');
+            augmentationComponents.img2.css('top', topPos).css('left', leftPos + 35).fadeIn('fast');
+            if (augmentationComponents.img3) {
+                augmentationComponents.img4.fadeOut('fast');
+                augmentationComponents.img3.css('top', topPos).css('left', leftPos + 70).fadeIn('fast');
+
+            }
+
+            // if (isSelectionForParagraph(window.getSelection())) {
+            //     augmentationComponents.img3.fadeOut('fast');
+            //     augmentationComponents.img4.css('top', topPos).css('left', e.pageX + 70).fadeIn('fast');
+            // }
+
+            if (window.getSelection().toString().split(" ").length <= 4) {
+                augmentationComponents.img5.css('top', topPos).css('left', leftPos + 105).fadeIn('fast');
+                augmentationComponents.img6.fadeOut('fast');
+            } else {
+                augmentationComponents.img6.css('top', topPos).css('left', leftPos + 105).fadeIn('fast');
+                augmentationComponents.img5.fadeOut('fast');
+            }
+
+        } else {
+            augmentationComponents.img1.fadeOut('fast');
+            augmentationComponents.img2.fadeOut('fast');
+            if (augmentationComponents.img3) {
+                augmentationComponents.img3.fadeOut('fast');
+            }
+            if (augmentationComponents.img4) {
+                augmentationComponents.img4.fadeOut('fast');
+            }
+            if (augmentationComponents.img5) {
+                augmentationComponents.img5.fadeOut('fast');
+            }
+            if (augmentationComponents.img6) {
+                augmentationComponents.img6.fadeOut('fast');
+            }
+
+        }
+    };
     var extracted_paragraphs = [];
     var settings = {
         prefix: 'eexcess',
-        classname: 'eexcess_detected_par'
+        classname: 'eexcess_detected_par',
+        img_PATH: 'img/'
+    };
+    /**
+     * go recursivley into DOM Elements to find all relevant texts.
+     */
+    var findChildElement = function(element) {
+        //better Performance with treewalker maybe?
+        if (element.hasChildNodes()) {
+            //Nodetype 3 == TEXT
+            if (element.childNodes[0].nodeType == 3) {
+                return element;
+            }
+            findChildElement(element.childNodes[0]);
+        }
+        return false;
+    };
+    /**
+     * Gets Coordinates for user selected paragraph
+     */
+    var getSelectedElements = function(selection) {
+        var out = false;
+        var range = selection.getRangeAt(0);
+        //looking for childnodes
+        var allWithinRangeParent = range.commonAncestorContainer.hasChildNodes() ? range.commonAncestorContainer.getElementsByTagName("*") : selection;
+
+
+        var coords = {
+            left: 0,
+            width: 0,
+            selectionText: ''
+        };
+
+        for (var i = 0, el; el = allWithinRangeParent[i]; i++) {
+            if (selection.containsNode(el, true)) {
+                var lastchild = (el);
+                if (lastchild && $(lastchild).width() >= 0) {
+                    coords.selectionText += $(lastchild).text();
+                    if (coords.width <= 0) {
+                        coords.width = $(lastchild).width();
+                    }
+                    if (coords.left <= 0) {
+                        coords.left = $(lastchild).offset().left;
+                    }
+                    // console.log($(lastchild).offset().left);
+                    // console.log($(lastchild).width());
+                    if ($(lastchild).width() > coords.width) {
+                        coords.width = $(lastchild).width();
+                    }
+                    if ($(lastchild).offset().left < coords.left) {
+                        coords.left = $(lastchild).offset().left;
+                    }
+                }
+            }
+        }
+        // console.log(coords);
+        return coords;
+    };
+
+    /**
+     * decides, if selection is okay for using it the 
+     * "make this selection as a paragraph" function.
+     * decission is based on the width and the X-coords
+     * of all involved DOM-Elements.
+     * Only if this is everywhere the same, the selection 
+     * can be used.
+     */
+    var isSelectionForParagraph = function(selection) {
+        var out = false;
+        var range = selection.getRangeAt(0);
+        //looking for childnotes
+        var allWithinRangeParent = range.commonAncestorContainer.hasChildNodes() ? range.commonAncestorContainer.getElementsByTagName("*") : selection;
+        // in one Array
+        var allSelected = [];
+        for (var i = 0, el; el = allWithinRangeParent[i]; i++) {
+            if (selection.containsNode(el, true)) {
+                var lastchild = findChildElement(el);
+                if (lastchild && $(lastchild).width() >= 0) {
+                    allSelected.push({
+                        //Checking for same width and position
+                        width: $(lastchild).width(),
+                        pos: $(lastchild).offset()
+                    });
+
+                }
+            }
+        }
+
+        /**
+         * Same Width & Position
+         */
+        //console.log(allSelected);
+        if (allSelected.length >= 1) {
+            var notSameWidth = false;
+            for (var i = 0; i <= allSelected.length - 1; i++) {
+
+                if (allSelected[0].width !== allSelected[i].width && allSelected[0].pos.left !== allSelected[i].pos.left) {
+                    out = true;
+                }
+            }
+            ;
+        }
+
+        return out;
     };
     var getCandidates = function(root) {
         if (typeof root === 'undefined') {
@@ -47,7 +246,7 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
             var containsText = node.nodeValue.search(/\S+/);
             var parent = node.parentNode.nodeName;
             var cond1 = parent !== 'SCRIPT'; // exclude script areas
-            var cond2 = parent !== 'STYLE';  // exclude style areas
+            var cond2 = parent !== 'STYLE'; // exclude style areas
             var cond3 = parent !== 'NOSCRIPT'; // exclude noscript areas
             var minLength = node.nodeValue.length > 40;
             if (containsText !== -1 && cond1 && cond2 && cond3 && minLength) {
@@ -105,12 +304,13 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
             delete this.timeoutID;
         }
     };
-    return {/**
-     * Initializes the module with parameters other than the defaults.
-     * @param {Object} config The configuration to be set. Only the parameters to change need to be specified.
-     * @param {String} config.prefix The prefix to be used in div-ids wrapping detected paragraphs.
-     * @param {String} config.classname The classname to be used in divs, which wrap detected paragraphs.
-     */
+    return {
+        /**
+         * Initializes the module with parameters other than the defaults.
+         * @param {Object} config The configuration to be set. Only the parameters to change need to be specified.
+         * @param {String} config.prefix The prefix to be used in div-ids wrapping detected paragraphs.
+         * @param {String} config.classname The classname to be used in divs, which wrap detected paragraphs.
+         */
         init: function(config) {
             settings = $.extend(settings, config);
         },
@@ -124,16 +324,21 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
         /**
          * Detects the paragraphs in the HTML document the script is executed.
          * @param {HTMLelement} root The root node from which to start the paragraph detection.
+         * @param {Object} [options] Options for the extraction. options.fast = true will reduce processing time sacrificing accuracy and options.addSubparagraphs will include potentia subparagraphs.
          * @returns {Array<{elements:HTMLelement[],headline:String,content:String,multi:Boolean,id:String}>} The paragraphs
          */
-        getParagraphs: function(root) {
+        getParagraphs: function(root, options) {
             if (typeof root === 'undefined') {
                 root = document;
+            }
+            if (typeof options === 'undefined') {
+                options = {};
             }
             var candidates = getCandidates(root);
             var paragraphs = [];
             var counter = 0;
 
+            // ######################### connect neighbours ########################
             /**
              * find neighbouring candidates and group them together in a single paragraph
              */
@@ -160,19 +365,47 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                 }
 
                 if (sole) {
-                    // single paragraphs must consist of at least 100 characters and contain a dot
-                    var text = $(candidates[i]).text();
-                    if (text.length > 100 && text.indexOf('.') > -1) {
-                        paragraphs.push(paragraphUtil([candidates[i]], counter));
-                        counter++;
+                    if (options.fast || $(candidates[i]).is(':visible')) {
+                        // single paragraphs must consist of at least 100 characters and contain a dot
+                        var text = $(candidates[i]).text();
+                        if (text.length > 100 && text.indexOf('.') > -1) {
+                            var detailed_paragraph = paragraphUtil([candidates[i]], counter);
+                            if (options.addSubparagraphs) {
+                                detailed_paragraph.subparagraphs = [{el: candidates[i], text: $(candidates[i]).text()}];
+                            }
+                            paragraphs.push(detailed_paragraph);
+                            counter++;
+                        }
                     }
                 } else {
-                    neighbours.unshift(candidates[i]);
-                    paragraphs.push(paragraphUtil(neighbours, counter));
-                    counter++;
-                    i = j;
+                    if (options.fast || $(candidates[i]).is(':visible')) {
+                        neighbours.unshift(candidates[i]);
+                        var detailed_paragraph = paragraphUtil(neighbours, counter);
+                        if (options.addSubparagraphs) {
+                            detailed_paragraph.subparagraphs = [];
+                            neighbours.forEach(function(val) {
+                                detailed_paragraph.subparagraphs.push({
+                                    el: val,
+                                    text: $(val).text()
+                                });
+                            });
+                        }
+                        paragraphs.push(detailed_paragraph);
+                        counter++;
+                        i = j;
+                    }
                 }
             }
+            // ############################################## DO NOT CONNECT NEIGHBOURS #################################
+            //            candidates = new Set(candidates); // TODO: is this really necessary?
+            //            candidates.forEach(function(val) {
+            //                var text = $(val).text();
+            //                if (text.length > 100 && text.indexOf('.') > -1) {
+            //                    paragraphs.push(paragraphUtil([val], counter));
+            //                    counter++;
+            //                }
+            //            });
+            // ##############################################################################################################
             extracted_paragraphs = paragraphs;
             return paragraphs;
         },
@@ -189,48 +422,429 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
          * @returns {undefined}
          */
         paragraphToQuery: function(paragraphContent, callback, id, headline) {
-            if (typeof id === 'undefined') {
-                id = 1;
-            }
-            if (typeof headline === 'undefined') {
-                headline = "";
-            }
-            var paragraphs = [{
-                    id: id,
-                    headline: headline,
-                    content: paragraphContent
-                }];
-            ner.entitiesAndCategories(paragraphs, function(res) {
-                // TODO: there might not be any mainTopic nor entities
-                if (res.status === 'success') {
-                    var profile = {
-                        contextKeywords: []
-                    };
-                    // add main topic
-                    if (res.data.paragraphs[0].topic && typeof res.data.paragraphs[0].topic !== 'undefined' && typeof res.data.paragraphs[0].topic.text !== 'undefined') {
-                        var mainTopic = {
-                            text: res.data.paragraphs[0].topic.text,
-                            uri: res.data.paragraphs[0].topic.entityUri,
-                            type: res.data.paragraphs[0].topic.type,
-                            isMainTopic: true
-                        };
-                        profile.contextKeywords.push(mainTopic);
+            var fallback = function(text) {
+                var profile = {
+                    contextKeywords: []
+                };
+                var offsets = [];
+                var test_candidate = function(word, len) {
+                    word = word.trim();
+                    if (word.length < len) {
+                        return false;
                     }
-                    // add other keywords
-                    $.each(res.data.paragraphs[0].statistic, function() {
-                        if (this.key.text !== mainTopic.text) {
-                            profile.contextKeywords.push({
-                                text: this.key.text,
-                                uri: this.key.entityUri,
-                                type: this.key.type,
-                                isMainTopic: false
+                    var first = word.charAt(0);
+                    if (first === first.toUpperCase() && first !== first.toLowerCase()) {
+                        return word;
+                    } else {
+                        return false;
+                    }
+                };
+                var textRank = function(text, k) {
+                    var maxIter = 100;
+                    var damping = 0.85;
+                    var delta = 0.5;
+                    var distance = 3;
+                    var constructGraph = function(text, dist) {
+                        var g = {
+                            nodes: [],
+                            vocabulary: []
+                        };
+                        var split = text.split(/[^a-zA-ZäöüÄÖÜßÀàÂâÆæÇçÈèÉéÊêËëÎîÏïÔôŒœÙùÛûŸÿ]/);
+                        var tagged = [];
+                        split.forEach(function(val) {
+                            var first = val.charAt(0);
+                            var tag = 'OTH';
+                            if (first === first.toUpperCase() && first !== first.toLowerCase() && val.length > 3) {
+                                tag = 'NN';
+                            }
+                            var arr = [];
+                            arr.push(val);
+                            arr.push(tag);
+                            tagged.push(arr);
+                        });
+                        for (var i = 0; i < tagged.length; ++i) {
+                            if (tagged[i][1] === 'NN') {
+                                var termA = tagged[i][0];
+                                var vocabularyIdx = g.vocabulary.indexOf(termA);
+                                if (vocabularyIdx === -1) {
+                                    vocabularyIdx = g.vocabulary.length;
+                                    g.vocabulary.push(termA);
+                                    g.nodes[vocabularyIdx] = {
+                                        adjacent: new Set(),
+                                        weightOld: 1.0,
+                                        weightNew: 0
+                                    };
+                                }
+                                for (var j = i + 1; j < i + dist && j < tagged.length; ++j) {
+                                    if (tagged[j][1] === 'NN') {
+                                        var termB = tagged[j][0];
+                                        if (termA === termB) {
+                                            continue;
+                                        }
+                                        var vocIdxCO = g.vocabulary.indexOf(termB);
+                                        if (vocIdxCO === -1) {
+                                            vocIdxCO = g.vocabulary.length;
+                                            g.vocabulary.push(termB);
+                                            g.nodes[vocIdxCO] = {
+                                                adjacent: new Set(),
+                                                weightOld: 1.0,
+                                                weightNew: 0
+                                            };
+                                        }
+                                        g.nodes[vocabularyIdx].adjacent.add(vocIdxCO);
+                                        g.nodes[vocIdxCO].adjacent.add(vocabularyIdx);
+                                    }
+                                }
+                            }
+                        }
+                        return g;
+                    };
+
+                    var textRank = function(graph, d) {
+                        var max_change = 0;
+                        for (var i = 0; i < graph.nodes.length; i++) {
+                            var sum_score = 0;
+                            graph.nodes[i].adjacent.forEach(function(v1, v2, set) {
+                                sum_score += graph.nodes[v1].weightOld / graph.nodes[v1].adjacent.size;
+                            });
+                            graph.nodes[i].weightNew = (1 - d) + d * sum_score;
+                        }
+                        for (var i = 0; i < graph.nodes.length; i++) {
+                            var change = Math.abs(graph.nodes[i].weightNew - graph.nodes[i].weightOld);
+                            if (change > max_change) {
+                                max_change = change;
+                            }
+                            graph.nodes[i].weightOld = graph.nodes[i].weightNew;
+                            graph.nodes[i].weightNew = 0;
+                        }
+                        return max_change;
+                    };
+
+                    var topK = function(graph, k) {
+                        var result = [];
+                        for (var i = 0; i < graph.nodes.length; i++) {
+                            var node = graph.nodes[i];
+                            result.push({
+                                term: graph.vocabulary[i],
+                                weight: node.weightOld
                             });
                         }
+                        result.sort(function(a, b) {
+                            return b.weight - a.weight;
+                        });
+
+                        var finalSet = new Set();
+                        for (var i = 0; i < k && i < result.length; i++) {
+                            finalSet.add(result[i].term);
+                        }
+                        ;
+                        return finalSet;
+                    };
+
+                    var graph = constructGraph(text, distance);
+
+                    // calculate textRank
+                    for (var i = 0; i < maxIter; i++) {
+                        var change = textRank(graph, damping);
+                        if (change <= (delta / graph.nodes.length)) {
+                            break;
+                        }
+                    }
+                    return topK(graph, k);
+                };
+                text = text.trim();
+                var test_split = text.split(/[^a-zA-ZäöüÄÖÜßÀàÂâÆæÇçÈèÉéÊêËëÎîÏïÔôŒœÙùÛûŸÿ]/);
+                if (test_split.length < 5) {
+                    profile.contextKeywords.push({
+                        text: text
                     });
-                    callback({query: profile});
+                    offsets[text] = [paragraphContent.indexOf(text)];
+                    callback({
+                        query: profile,
+                        offsets: offsets
+                    });
+                    return;
+                }
+                var sents = text.split(/[.!?]/);
+                var keywords = new Set();
+                sents.forEach(function(val) {
+                    var words = val.split(/[^a-zA-ZäöüÄÖÜßÀàÂâÆæÇçÈèÉéÊêËëÎîÏïÔôŒœÙùÛûŸÿ]/);
+                    for (var i = 0; i < words.length; i++) {
+                        var keyword = test_candidate(words[i], 3);
+                        if (keyword) {
+                            var candidate;
+                            i++;
+                            while (i < words.length && (candidate = test_candidate(words[i], 2))) {
+                                keyword += ' ' + candidate;
+                                i++;
+                            }
+                            if (keyword.length > 4) {
+                                keywords.add(keyword);
+                            }
+                        }
+                    }
+                });
+                var tmpArr = [];
+                keywords.forEach(function(val) {
+                    tmpArr.push(val);
+                });
+                keywords = [];
+                tmpArr.sort(function(a, b) {
+                    if (a.length < b.length) {
+                        return -1;
+                    }
+                    if (a.length > b.length) {
+                        return 1;
+                    }
+                    return 0;
+                });
+                for (var i = 0; i < tmpArr.length; ++i) {
+                    var contained = false;
+                    for (var j = i + 1; j < tmpArr.length; ++j) {
+                        if (tmpArr[j].indexOf(tmpArr[i]) !== -1) {
+                            contained = true;
+                        }
+                    }
+                    if (!contained) {
+                        keywords.push(tmpArr[i]);
+                    }
+                }
+                if (keywords.length > 10) {
+                    var finalSet = new Set();
+                    var textranks = textRank(text, 10);
+                    textranks.forEach(function(val) {
+                        for (var i = 0; i < keywords.length; ++i) {
+                            if (keywords[i].indexOf(val) !== -1) {
+                                finalSet.add(keywords[i]);
+                                break;
+                            }
+                        }
+                    });
+                    if (finalSet.size > 3) {
+                        keywords = finalSet;
+                    } else {
+                        keywords = new Set(keywords);
+                    }
                 } else {
-                    // TODO: add simple fallback
-                    callback({error: res.data});
+                    keywords = new Set(keywords);
+                }
+                if (keywords.size === 0) {
+                    var counter = 0;
+                    for (var i = 0; counter < 10 && i < test_split.length; i++) {
+                        var tmp = test_split[i].trim();
+                        if (tmp.length > 3) {
+                            counter++;
+                            keywords.add(tmp);
+                        }
+                    }
+                }
+                keywords.forEach(function(val) {
+                    profile.contextKeywords.push({
+                        text: val
+                    });
+                    var offset = paragraphContent.indexOf(val);
+                    offsets[val] = [];
+                    while (offset !== -1) {
+                        offsets[val].push(offset);
+                        offset = paragraphContent.indexOf(val, offset + val.length);
+                    }
+                    if (offsets[val].length === 0) {
+                        var firstPart = val.split(' ')[0];
+                        offset = paragraphContent.indexOf(firstPart);
+                        while (offset !== -1) {
+                            offsets[val].push(offset);
+                            offset = paragraphContent.indexOf(firstPart, offset + firstPart.length);
+                        }
+                    }
+                });
+                callback({
+                    query: profile,
+                    offsets: offsets
+                });
+            };
+            guessLang.detect(paragraphContent, function(lang) {
+                if (lang === 'en' || lang === 'de') {
+                    if (typeof id === 'undefined') {
+                        id = 1;
+                    }
+                    if (typeof headline === 'undefined') {
+                        headline = "";
+                    }
+                    var paragraphs = {
+                        paragraphs: [{
+                                id: id,
+                                headline: headline,
+                                content: paragraphContent
+                            }],
+                        language: lang
+                    };
+
+
+                    ner.entitiesAndCategories(paragraphs, function(res) {
+                        if (res.status === 'success') {
+                            var profile = {
+                                contextKeywords: []
+                            };
+                            var offsets = [];
+                            // add main topic
+                            if (res.data.paragraphs[0].topic && typeof res.data.paragraphs[0].topic !== 'undefined' && typeof res.data.paragraphs[0].topic.text !== 'undefined') {
+                                var mainTopic = {
+                                    text: res.data.paragraphs[0].topic.text,
+                                    uri: res.data.paragraphs[0].topic.entityUri,
+                                    type: res.data.paragraphs[0].topic.type,
+                                    isMainTopic: true
+                                };
+                                profile.contextKeywords.push(mainTopic);
+                            }
+                            // add other keywords
+                            $.each(res.data.paragraphs[0].statistic, function() {
+                                offsets[this.key.text] = this.key.offset;
+                                if (this.key.text !== mainTopic.text) {
+                                    profile.contextKeywords.push({
+                                        text: this.key.text,
+                                        uri: this.key.entityUri,
+                                        type: this.key.type,
+                                        isMainTopic: false
+                                    });
+                                }
+                            });
+                            if (profile.contextKeywords.length === 0) {
+                                fallback(paragraphContent);
+                            } else {
+                                callback({
+                                    query: profile,
+                                    offsets: offsets
+                                });
+                            }
+                        } else {
+                            fallback(paragraphContent);
+                        }
+                    });
+                } else {
+                    fallback(paragraphContent);
+                }
+            });
+        },
+        /**
+         * Create queries in a format similar to the EEXCESS query profile from the provided paragraph.
+         * 
+         * The entries in the provided paragraphs array must at least have an attribute "text", containing the text of the paragraph
+         * @param {Array} paragraphs The paragraphs for which to create queries
+         * @param {paragraphToQueries~callback} callback The callback function
+         * @param {String} [headline] headline of the paragraphs
+         * @returns {undefined}
+         */
+        paragraphsToQueries: function(paragraphs, callback, headline) {
+            if (paragraphs.length === 0) {
+                callback({error: 'no paragraphs given'});
+                return;
+            }
+            // TODO: create main query from main topic only as soon as available
+            var headline = headline || '';
+            var pars = [];
+
+            var main = {
+                id: 'main',
+                content: '',
+                headline: headline
+            };
+            for (var i = 0; i < paragraphs.length; i++) {
+                pars.push({
+                    id: i,
+                    headline: headline,
+                    content: paragraphs[i].text
+                });
+                main.content += paragraphs[i].text;
+            }
+            pars.push(main);
+            guessLang.detect(main.content, function(lang) {
+                if (lang === 'en' || lang === 'de') {
+                    var toSubmit = {
+                        paragraphs: pars,
+                        language: lang
+                    };
+                    ner.entitiesAndCategories(toSubmit, function(res) {
+                        if (res.status === 'success') {
+                            var createKeyword = function(val, isMainTopic, freq) {
+                                return {
+                                    text: val.text,
+                                    uri: val.entityUri,
+                                    type: val.type,
+                                    categories: val.categories || [],
+                                    frequency: freq || 1,
+                                    isMainTopic: isMainTopic
+                                };
+                            };
+                            var queries = {
+                                subs: [],
+                                main: {
+                                    contextKeywords: [],
+                                    offsets: []
+                                }
+                            };
+                            // first add main topic to main query
+                            var overallTopic;
+                            res.data.paragraphs.forEach(function(val) {
+                                if (val.id === 'main' && val.topic && typeof val.topic !== 'undefined' && typeof val.topic.text !== 'undefined') {
+                                    overallTopic = createKeyword(val.topic, true);
+                                    // TODO: add categories (not available from server yet);
+                                    queries.main.contextKeywords.push(overallTopic);
+                                }
+                            });
+
+                            var offset = 0;
+                            res.data.paragraphs.forEach(function(val) {
+                                if (val.id !== 'main') {
+                                    var query = {
+                                        contextKeywords: [],
+                                        offsets: []
+                                    };
+                                    var mainTopic;
+                                    if (val.topic && typeof val.topic !== 'undefined' && typeof val.topic.text !== 'undefined') {
+                                        mainTopic = createKeyword(val.topic, true);
+                                        // TODO: add categories (not available from server yet);
+                                        query.contextKeywords.push(mainTopic);
+                                    }
+                                    val.statistic.forEach(function(statVal) {
+                                        var offsets = [];
+                                        statVal.key.offset.forEach(function(offsetVal) {
+                                            offsets.push(offsetVal + offset);
+                                        });
+                                        var keyword = createKeyword(statVal.key, false, statVal.value);
+                                        // add keyword to subquery
+                                        if (!mainTopic || mainTopic.text !== statVal.key.text) {
+                                            query.offsets[statVal.key.text] = offsets;
+                                            query.contextKeywords.push(keyword);
+                                        }
+                                        // add keyword to main query
+                                        if (!overallTopic || overallTopic.text !== statVal.key.text) {
+                                            if (queries.main.offsets[statVal.key.text]) {
+                                                // keyword already present, sum offsets and frequency
+                                                queries.main.offsets[statVal.key.text] = queries.main.offsets[statVal.key.text].concat(offsets);
+                                                for (var i = 0; i < queries.main.contextKeywords.length; i++) {
+                                                    if (queries.main.contextKeywords[i].uri === statVal.key.entityUri) {
+                                                        queries.main.contextKeywords[i].frequency += statVal.value;
+                                                        break;
+                                                    }
+                                                }
+                                            } else {
+                                                // add offsets and keyword
+                                                queries.main.offsets[statVal.key.text] = offsets;
+                                                queries.main.contextKeywords.push(keyword);
+                                            }
+                                        }
+                                    });
+                                    queries.subs.push(query);
+                                    offset += pars[val.id].content.length;
+                                }
+                            });
+                            callback({queries: queries});
+                        } else {
+                            callback({error: res.data});
+                        }
+                    });
+                } else {
+                    callback({error: 'unsupported language: ' + lang});
                 }
             });
         },
@@ -252,7 +866,6 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                         retVal.entities = paragraphs[idx].entities;
                     }
                 } else if (parentPars.length > 1) {
-                    console.log('multiple paragraphs');
                     // TODO: entities from multiple paragraphs
                 }
             }
@@ -304,7 +917,6 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                 if (el.text().length > 3) {
                     var wrapper = $('<div style="display:inline;"></div>');
                     wrapper.mouseenter(function(evt) {
-                        console.log('mouseenter');
                         var parents = el.parents('.' + classname);
                         delayTimer.clearTimer();
                         img.data('query', el.text());
@@ -384,7 +996,9 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                 var offset = $(window).scrollTop() + $(window).height();
                 $(paragraphs).each(function() {
                     var top = $(this.elements[0]).offset().top;
-                    if (offset > top && top > $(window).scrollTop()) {
+                    var bottom = top + $(this.elements[0]).parent().height();
+                    if ((top <= offset) && (bottom >= $(window).scrollTop())) {
+                        //if (offset > top && top > $(window).scrollTop()) {
                         this.cursorDistance = 0;
                         visibleElements.add(this);
                     }
@@ -397,19 +1011,21 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                 var focusedPar;
                 visiblePars.forEach(function(v1) {
                     v1.pGotRead = w1 * v1.sizeRelation + w2 * v1.distance + w3 * v1.cursorDistance;
-//                var out = w1 * v1.sizeRelation + '+' + w2 * v1.distance + '+' + w3 * v1.cursorDistance + '=' + v1.pGotRead;
-//                if ($(v1.elements[0]).find($('.pgotread')).length > 0) {
-//                    $(v1.elements[0]).find($('.pgotread')).text(out);
-//                } else {
-//                    $(v1.elements[0]).prepend('<span class="pgotread" style="color:red;">' + out + '</span>');
-//                }
+                    //                var out = w1 * v1.sizeRelation + '+' + w2 * v1.distance + '+' + w3 * v1.cursorDistance + '=' + v1.pGotRead;
+                    //                if ($(v1.elements[0]).find($('.pgotread')).length > 0) {
+                    //                    $(v1.elements[0]).find($('.pgotread')).text(out);
+                    //                } else {
+                    //                    $(v1.elements[0]).prepend('<span class="pgotread" style="color:red;">' + out + '</span>');
+                    //                }
                     if (v1.pGotRead > highestProb) {
                         highestProb = v1.pGotRead;
                         focusedPar = v1;
                     }
                 });
                 // event might be dispatched multiple times, leave the handling to the listener
-                var event = new CustomEvent('paragraphFocused', {detail: focusedPar});
+                var event = new CustomEvent('paragraphFocused', {
+                    detail: focusedPar
+                });
                 document.dispatchEvent(event);
             }
 
@@ -481,7 +1097,8 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                     updateProbabilities();
                 }, 100);
             });
-        }, /**
+        },
+        /**
          * Find the paragraph the user is currently looking at. 
          * 
          * In this simplified version, the topmost left paragraph is regarded as focused, except for the user explicitly clicking on a paragraph.
@@ -499,15 +1116,15 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
             $.each(extracted_paragraphs, function() {
                 var that = this;
                 $(this.elements[0]).parent().click(function(e) {
-                    var event = new CustomEvent('paragraphFocused', {detail: that});
+                    var event = new CustomEvent('paragraphFocused', {detail: {paragraph: that, trigger: 'click'}});
                     document.dispatchEvent(event);
                 });
             });
             var visiblePars = getVisible(extracted_paragraphs);
             updateDistance();
-            updateProbabilities();
+            updateProbabilities('init');
 
-            function updateProbabilities() {
+            function updateProbabilities(trigger) {
                 var highestProb;
                 var focusedPar;
                 visiblePars.forEach(function(v1) {
@@ -517,9 +1134,11 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                         focusedPar = v1;
                     }
                 });
-                // event might be dispatched multiple times, leave the handling to the listener
-                var event = new CustomEvent('paragraphFocused', {detail: focusedPar});
-                document.dispatchEvent(event);
+                if (focusedPar) {
+                    // event might be dispatched multiple times, leave the handling to the listener
+                    var event = new CustomEvent('paragraphFocused', {detail: {paragraph: focusedPar, trigger: trigger}});
+                    document.dispatchEvent(event);
+                }
             }
 
             $(document).scroll(function(evt) {
@@ -527,7 +1146,7 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                 scrollTimer = setTimeout(function() {
                     visiblePars = getVisible(extracted_paragraphs);
                     updateDistance();
-                    updateProbabilities();
+                    updateProbabilities('scroll');
                 }, 100);
             });
 
@@ -536,23 +1155,175 @@ define(['jquery', 'block_eexcess/namedEntityRecognition'], function($, ner) {
                 var offset = $(window).scrollTop() + $(window).height();
                 $(paragraphs).each(function() {
                     var top = $(this.elements[0]).offset().top;
-                    if (offset > top && top > $(window).scrollTop()) {
+                    var bottom = top + $(this.elements[0]).parent().height();
+                    // if (offset > top && top > $(window).scrollTop()) {
+                    if ((top <= offset) && (bottom >= $(window).scrollTop())) {
                         visibleElements.add(this);
                     }
                 });
                 return visibleElements;
             }
+
             function updateDistance() {
                 visiblePars.forEach(function(v1) {
                     var offset = $(v1.elements[0]).offset();
                     var left = offset.left - $(window).scrollLeft();
                     var top = offset.top - $(window).scrollTop();
-//                    if (top < 0) {
-//                        top = $(window).height();
-//                    }
+                    if (top < 0) {
+                        top -= $(window).height();
+                    }
+                    //                    if (top < 0) {
+                    //                        top = $(window).height();
+                    //                    }
                     v1.distance = Math.sqrt(left * left + top * top);
                 });
             }
+        },
+        /**
+         * Creates a map of text offsets and corresponding DOM elements of the 
+         * paragraph. For each element, the start position in the paragaph's 
+         * plaintext representation is provided.
+         * @param {Object} paragraph The paragraph.
+         * @returns {Array} Array of DOM nodes and corresponding start positions
+         * in the paragrahp's Text. The contained Objects consist of two 
+         * attributes: 'offset' (the start position) and 'el' (the DOM element).
+         */
+        getOffsetMap: function(paragraph) {
+            var offsets = [];
+            var offset = 0;
+            var walker = document.createTreeWalker(
+                    paragraph,
+                    NodeFilter.SHOW_TEXT
+                    );
+            var node;
+            while (node = walker.nextNode()) {
+                if (node.nodeValue.length > 0) {
+                    offsets.push({
+                        offset: offset,
+                        el: node
+                    });
+                    offset += node.nodeValue.length;
+                }
+            }
+            return offsets;
+        },
+        deactivateSelectionAugmentation: function() {
+            // remove images
+            // unbind listener
+            augmentationComponents.img1.remove();
+            augmentationComponents.img2.remove();
+            augmentationComponents.img3.remove();
+            augmentationComponents.img4.remove();
+            augmentationComponents.img5.remove();
+            augmentationComponents.img6.remove();
+            $(document).unbind('mouseup', pgf);
+            if ($('body').has('#gen-para-ex-selected')) {
+                $('#gen-para-ex-selected').remove();
+            }
+        },
+        activateSelectionAugmentation: function(augmentationData) {
+            if (typeof augmentationData.addKeyword === 'function') {
+                augmentationComponents.img1 = $('<div id="add-ex-aug" title="Add this selection as a Keyword-Tag in the SearchBar"></div>')
+                        .css('position', 'absolute')
+                        .css('width', '30px')
+                        .css('height', '30px')
+                        .css('cursor', 'pointer')
+                        .css('background-image', 'url("' + settings.img_PATH + 'add.png")')
+                        .css('background-size', 'contain').hide();
+                augmentationComponents.img1.click(function(e) {
+                    augmentationData.addKeyword(augmentationComponents.selection);
+                });
+                $('body').append(augmentationComponents.img1);
+            }
+            if (typeof augmentationData.queryFromSelection === 'function') {
+                augmentationComponents.img2 = $('<div id="search-ex-aug" title="Search with the (automatically recognised) Named Entities in this selection"></div>')
+                        .css('position', 'absolute')
+                        .css('width', '30px')
+                        .css('height', '30px')
+                        .css('cursor', 'pointer')
+                        .css('title', '"button2"')
+                        .css('background-image', 'url("' + settings.img_PATH + 'search.png")')
+                        .css('background-size', 'contain').hide();
+                augmentationComponents.img2.click(function(e) {
+                    augmentationData.queryFromSelection(augmentationComponents.selection);
+                });
+                $('body').append(augmentationComponents.img2);
+            }
+            if (typeof augmentationData.pd === 'function') {
+                augmentationComponents.img3 = $('<div id="gen-para-ex-aug" title="Handle this selection as a paragraph"></div>')
+                        .css('position', 'absolute')
+                        .css('width', '30px')
+                        .css('height', '30px')
+                        .css('cursor', 'pointer')
+                        .css('background-image', 'url("' + settings.img_PATH + 'gen-para.png")')
+                        .css('background-size', 'contain').hide();
+                augmentationComponents.img3.click(function(e) {
+                    var element1 = $(augmentationComponents.firstSelectedElement);
+                    var element2 = $(augmentationComponents.lastSelectedElement);
+                    var selecteElement = $(augmentationComponents.selectedElement);
+                    var cords = augmentationComponents.selectedElements;
+                    var element1Width = element1.width() + element1.offset().left;
+                    var element2Width = element2.width() + element2.offset().left;
+                    var maxframewidth = (element1Width > element2Width) ? element1Width : element2Width;
+                    if (cords.width === 0) {
+                        cords.width = element1.width();
+                        cords.left = element1.offset().left;
+                        cords.selectionText = $(augmentationComponents.selectedElement).text();
+                    }
+                    //remove frame if it was added before
+                    if ($('body').has('#gen-para-ex-selected')) {
+                        $('#gen-para-ex-selected').remove();
+                    }
+                    var newframe = $('<div id="gen-para-ex-selected"></div>')
+                            .css('position', 'absolute')
+                            .css('top', element1.offset().top)
+                            .css('left', cords.left)
+                            .css('width', cords.width)
+                            .css('pointer-events', 'none')
+                            .css('height', (element2.offset().top - element1.offset().top) + element2.height());
+                    $('body').append(newframe);
+                    augmentationData.pd(newframe, cords.selectionText);
+                });
+
+                $('body').append(augmentationComponents.img3);
+                augmentationComponents.img4 = $('<div id="gen-para-ex-aug" title="Can not handle this selection as a paragraph"></div>')
+                        .css('position', 'absolute')
+                        .css('width', '30px')
+                        .css('height', '30px')
+                        .css('background-image', 'url("' + settings.img_PATH + 'gen-para-grey.png")')
+                        .css('background-size', 'contain').hide();
+
+                $('body').append(augmentationComponents.img4);
+            }
+
+            if (typeof augmentationData.mainTopic === 'function') {
+                augmentationComponents.img5 = $('<div id="main-topic-ex-aug" title="Select as a maintopic"></div>')
+                        .css('position', 'absolute')
+                        .css('width', '30px')
+                        .css('height', '30px')
+                        .css('cursor', 'pointer')
+                        .css('title', '"button2"')
+                        .css('background-image', 'url("' + settings.img_PATH + 'main-topic.png")')
+                        .css('background-size', 'contain').hide();
+                augmentationComponents.img5.click(function(e) {
+                    augmentationData.mainTopic(augmentationComponents.selection);
+                });
+                $('body').append(augmentationComponents.img5);
+
+                augmentationComponents.img6 = $('<div id="main-topic-grey-ex-aug" title="Selection too long for maintopic"></div>')
+                        .css('position', 'absolute')
+                        .css('width', '30px')
+                        .css('height', '30px')
+                        .css('title', '"button2"')
+                        .css('background-image', 'url("' + settings.img_PATH + 'main-topic-grey.png")')
+                        .css('background-size', 'contain').hide();
+
+                $('body').append(augmentationComponents.img6);
+            }
+
+            $(document).bind('mouseup', pgf);
+
+
         }
     };
 });

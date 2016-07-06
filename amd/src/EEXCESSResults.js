@@ -27,6 +27,8 @@ define(['jquery', 'block_eexcess/APIconnector', 'block_eexcess/iframes', 'block_
     function createUserID(clientType, userName) {
         return md5.getHash(clientType + userName);
     }
+    var showBar = undefined;
+    var hideBar = undefined;
     var interestsText = undefined;
     var userId = undefined;
     var baseUrl = undefined;
@@ -48,7 +50,9 @@ define(['jquery', 'block_eexcess/APIconnector', 'block_eexcess/iframes', 'block_
     // Methods.
     var m = {
         // PUBLIC METHODS.
-        init: function (userid, rec_base_url, interests) { // plugin initializer.
+        init: function (userid, rec_base_url, interests, status_bar, showbar, hidebar) { // plugin initializer.
+            showBar = showbar;
+            hideBar = hidebar;
             interestsText = interests;
             userId = userid;
             origin.userID = createUserID(origin.clientType, userId);
@@ -57,6 +61,9 @@ define(['jquery', 'block_eexcess/APIconnector', 'block_eexcess/iframes', 'block_
             searchBariframeurl = "https://rawgit.com/megamuf/c4-for-moodle-plugin/master/examples/searchBar_Paragraphs/index.html";
             m._bindControls();
             m._createUI();
+            if(status_bar === 1){
+                $('.search-bar-div').addClass('active');
+            }
         },
 
         // PRIVATE METHODS.
@@ -78,7 +85,24 @@ define(['jquery', 'block_eexcess/APIconnector', 'block_eexcess/iframes', 'block_
                 }
             });
             $('.show-hide-bar').on('click', function(){
-                $('.search-bar-div').toggleClass('active');
+                var status;
+                if($('.search-bar-div').hasClass('active')){
+                    $('.search-bar-div').removeClass('active');
+                    status = false;
+                    $(this).text(showBar);
+                }
+                else{
+                    $('.search-bar-div').addClass('active');
+                    status = true;
+                    $(this).text(hideBar);
+                }
+                $.ajax({
+                    url: M.cfg.wwwroot + "/blocks/eexcess/search_bar_status.php",
+                    type: "POST",
+                    data:{
+                        status:status
+                    }
+                });
             });
 
             window.addEventListener('message', function (e) {

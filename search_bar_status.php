@@ -15,27 +15,12 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Language strings
+ * Add eexcess search bar statut show or hide.
  *
  * @package    block_eexcess
  * @copyright  bit media e-solutions GmbH <gerhard.doppler@bitmedia.cc>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-$string['pluginname'] = 'EEXCESS';
-$string['interests'] = 'Interests';
-$string['citation'] = 'Citation';
-$string['imagelicense'] = 'Image License';
-$string['showbar'] = 'Show Search Bar';
-$string['hidebar'] = 'Hide Search Bar';
-$string['img_license'] = 'Add image license';
-$string['link'] = 'Insert link';
-$string['changecit'] = 'Change eexcess citation';
-$string['eexcess_base_url'] = 'Change base url for recommendations';
-$string['interests_tags'] = 'Add interests tags';
-$string['image_license'] = 'Image License';
-$string['info_admin_img_license'] = 'Add image licenses and separate them with commas.';
-$string['delete'] = 'Delete';
-$string['edit'] = 'Edit';
-$string['eexcess:addinstance'] = 'Add a new eexcess block';
-$string['eexcess:myaddinstance'] = 'Add a new eexcess block to Dashboard';
+require_once(dirname(dirname(dirname(__FILE__))) . '/config.php');
+$statusbar = required_param('status', PARAM_BOOL);
+$SESSION->search_bar_status = $statusbar;
